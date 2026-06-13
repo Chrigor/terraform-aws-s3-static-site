@@ -1,0 +1,73 @@
+name: Create S3 Static Site
+
+on:
+  issues:
+    types:
+      - opened
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  AWS_REGION: us-east-1
+  TF_WORKING_DIR: terraform/s3-bucket-static
+
+jobs:
+  deploy:
+    name: Deploy S3 Static Site with Terraform
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Define bucket name a partir do titulo da issue
+        id: bucket
+        run: |
+          slug=$(echo "${{ github.event.issue.title }}" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+          echo "name=${slug}" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Format
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -var="bucket_name=${{ steps.bucket.outputs.name }}"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false -var="bucket_name=${{ steps.bucket.outputs.name }}"
+
+      - name: Comenta sucesso na issue
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const bucket = `static-site-${{ steps.bucket.outputs.name }}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `✅ Site estático provisionado com sucesso!\n\n- **Bucket:** \`${bucket}\`\n- **Região:** \`${{ env.AWS_REGION }}\`\n\nDetalhes da execução: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
