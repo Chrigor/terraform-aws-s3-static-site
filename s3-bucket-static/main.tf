@@ -5,22 +5,30 @@ provider "aws" {
 }
 
 variable "bucket_name" {
-  type = "string"
+  type = string
 }
 
 resource "aws_s3_bucket" "static_site_bucket" {
-  bucket = "static_site-${var.bucket_name}"
-
-  Website {
-    index_document = "index.html"
-    error_document = "404.html"
-  }
+  bucket = "static-site-${var.bucket_name}"
 
   # Organizar os Buckets (Labels)
-  tags = { 
-    Name       = "Static Site Bucket"
-    Enviroment = "Production"
-  } 
+  tags = {
+    Name        = "Static Site Bucket"
+    Environment = "Production"
+  }
+}
+
+# Configuracao de hospedagem de site estatico
+resource "aws_s3_bucket_website_configuration" "static_site_bucket" {
+  bucket = aws_s3_bucket.static_site_bucket.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "404.html"
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "static_site_bucket" {
@@ -32,7 +40,7 @@ resource "aws_s3_bucket_public_access_block" "static_site_bucket" {
   restrict_public_buckets = false
 }
 
-# Anexa politica
+# Define o controle de propriedade dos objetos
 resource "aws_s3_bucket_ownership_controls" "static_site_bucket" {
   bucket = aws_s3_bucket.static_site_bucket.id
   rule {
@@ -45,7 +53,8 @@ resource "aws_s3_bucket_acl" "static_site_bucket" {
   depends_on = [
     aws_s3_bucket_public_access_block.static_site_bucket,
     aws_s3_bucket_ownership_controls.static_site_bucket,
-    bucket = aws_s3_bucket.static_site_bucket.id
-    acl = "public-read"
   ]
+
+  bucket = aws_s3_bucket.static_site_bucket.id
+  acl    = "public-read"
 }
