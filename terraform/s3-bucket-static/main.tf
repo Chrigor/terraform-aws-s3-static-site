@@ -40,21 +40,44 @@ resource "aws_s3_bucket_public_access_block" "static_site_bucket" {
   restrict_public_buckets = false
 }
 
-# Define o controle de propriedade dos objetos
-resource "aws_s3_bucket_ownership_controls" "static_site_bucket" {
+# Libera leitura publica dos objetos via bucket policy
+resource "aws_s3_bucket_policy" "static_site_bucket" {
+  depends_on = [aws_s3_bucket_public_access_block.static_site_bucket]
+
   bucket = aws_s3_bucket.static_site_bucket.id
-  rule {
-    object_ownership = "BucketOwnerPreferred"
-  }
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.static_site_bucket.arn}/*"
+      }
+    ]
+  })
 }
 
-# Libera politicas de leitura para todos
-resource "aws_s3_bucket_acl" "static_site_bucket" {
-  depends_on = [
-    aws_s3_bucket_public_access_block.static_site_bucket,
-    aws_s3_bucket_ownership_controls.static_site_bucket,
-  ]
+# Envia o index.html para o bucket
+resource "aws_s3_object" "index" {
+  bucket       = aws_s3_bucket.static_site_bucket.id
+  key          = "index.html"
+  source       = "${path.module}/site/index.html"
+  content_type = "text/html"
+  etag         = filemd5("${path.module}/site/index.html")
+}
 
-  bucket = aws_s3_bucket.static_site_bucket.id
-  acl    = "public-read"
+# Envia o 404.html para o bucket
+resource "aws_s3_object" "error" {
+  bucket       = aws_s3_bucket.static_site_bucket.id
+  key          = "404.html"
+  source       = "${path.module}/site/404.html"
+  content_type = "text/html"
+  etag         = filemd5("${path.module}/site/404.html")
+}
+
+# URL publica do site estatico
+output "website_url" {
+  value = "http://${aws_s3_bucket_website_configuration.static_site_bucket.website_endpoint}"
 }
